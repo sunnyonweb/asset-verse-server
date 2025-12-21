@@ -77,7 +77,7 @@ async function run() {
 
     // --- Auth Related APIs ---
 
-    // 1. JWT Generate (Login/Social Login)
+    // 1. JWT 
     app.post('/jwt', async (req, res) => {
       const user = req.body;
       const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, { expiresIn: '5h' });
