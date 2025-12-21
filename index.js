@@ -55,25 +55,9 @@ const verifyToken = (req, res, next) => {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 async function run() {
   try {
-    // Connect to MongoDB (Vercel এ এটা অনেক সময় অপশনাল, তবে লোকাল এর জন্য ভালো)
+    // Connect to MongoDB 
     // await client.connect(); 
     console.log("Creating connection setup...");
 
