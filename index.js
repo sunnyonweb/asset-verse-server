@@ -392,6 +392,7 @@ async function run() {
     });
 
     // 5. Update Asset
+
     app.patch('/assets/:id', verifyToken, async (req, res) => {
         const id = req.params.id;
         const item = req.body;
