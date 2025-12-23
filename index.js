@@ -288,20 +288,19 @@ async function run() {
     });
 
     // 4. HR Handle Request (Approve/Reject) - *** MAIN LOGIC HERE ***
+    // 4. HR Handle Request (Approve/Reject) with LIMIT CHECK
     app.patch('/requests/:id', verifyToken, async (req, res) => {
       const id = req.params.id;
-      const { status } = req.body; // 'approved' or 'rejected'
+      const { status } = req.body; 
       
       const filter = { _id: new ObjectId(id) };
-      
-      // 1. Get the request details first to know assetId and employee info
       const request = await requestsCollection.findOne(filter);
       
       if (!request) {
           return res.status(404).send({ message: "Request not found" });
       }
 
-      // If Rejected: Just update status
+      // If Rejected: Just update status (No limit check needed)
       if (status === 'rejected') {
           const updateDoc = {
               $set: { requestStatus: 'rejected', approvalDate: new Date() }
@@ -310,8 +309,34 @@ async function run() {
           return res.send(result);
       }
 
-      // If Approved: 3 Steps Logic
+
+      // If Approved: Check Limit First, then Process
       if (status === 'approved') {
+          
+          // ==================== NEW LIMIT CHECK LOGIC START ====================
+          // ১. HR এর প্যাকেজ লিমিট বের করো
+          const hrUser = await usersCollection.findOne({ email: request.hrEmail });
+          const limit = hrUser?.packageLimit || 5;
+
+          // ২. বর্তমানে কতজন এমপ্লয়ি আছে তা গুনো
+          const currentEmployees = await affiliationCollection.countDocuments({ hrEmail: request.hrEmail });
+
+          // ৩. চেক করো এই এমপ্লয়ি আগে থেকেই টিমে আছে কিনা
+          const existingAffiliation = await affiliationCollection.findOne({
+              employeeEmail: request.requesterEmail,
+              hrEmail: request.hrEmail
+          });
+
+          // ৪. যদি নতুন মেম্বার হয় এবং লিমিট ক্রস করে ফেলে -> আটকাও
+          if (!existingAffiliation && currentEmployees >= limit) {
+              return res.send({ 
+                  limitReached: true, 
+                  message: "Package Limit Reached. Please Upgrade!" 
+              });
+          }
+          // ==================== NEW LIMIT CHECK LOGIC END ====================
+
+
           // Step A: Update Request Status
           const updateRequestDoc = {
               $set: { requestStatus: 'approved', approvalDate: new Date() }
@@ -321,33 +346,28 @@ async function run() {
           // Step B: Reduce Asset Quantity
           const assetFilter = { _id: new ObjectId(request.assetId) };
           const updateAssetDoc = {
-              $inc: { availableQuantity: -1 } // Decrease by 1
+              $inc: { availableQuantity: -1 } 
           };
           await assetsCollection.updateOne(assetFilter, updateAssetDoc);
 
-          // Step C: Auto-Affiliation (Check if already affiliated)
-          const affiliationQuery = {
-              employeeEmail: request.requesterEmail,
-              hrEmail: request.hrEmail
-          };
-          
-          const existingAffiliation = await affiliationCollection.findOne(affiliationQuery);
-
+          // Step C: Auto-Affiliation (Only if not already affiliated)
           if (!existingAffiliation) {
-              // Create new affiliation
               const newAffiliation = {
                   employeeEmail: request.requesterEmail,
                   employeeName: request.requesterName,
                   hrEmail: request.hrEmail,
                   companyName: request.companyName,
-                  companyLogo: request.companyLogo, // Make sure frontend sends this in request
+                  companyLogo: request.companyLogo,
                   affiliationDate: new Date(),
                   role: "employee"
               };
               await affiliationCollection.insertOne(newAffiliation);
               
-              // Also Update User Profile (Optional but good) - Add Company Name to User?
-              // Requirements say "View team information per company", so Affiliation Collection is enough.
+              // HR এর user collection এও সংখ্যা বাড়াতে পারো (Optional)
+              await usersCollection.updateOne(
+                  { email: request.hrEmail }, 
+                  { $inc: { currentEmployees: 1 } }
+              );
           }
 
           res.send({ success: true, message: "Request Approved and Processed" });
@@ -359,6 +379,34 @@ async function run() {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
         const result = await requestsCollection.deleteOne(query);
+        res.send(result);
+    });
+
+
+    // 4. Get Single Asset (For Update Page)
+    app.get('/assets/:id', verifyToken, async (req, res) => {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await assetsCollection.findOne(query);
+        res.send(result);
+    });
+
+    // 5. Update Asset
+    app.patch('/assets/:id', verifyToken, async (req, res) => {
+        const id = req.params.id;
+        const item = req.body;
+        const filter = { _id: new ObjectId(id) };
+        
+        const updatedDoc = {
+            $set: {
+                productName: item.productName,
+                productType: item.productType,
+                productQuantity: parseInt(item.productQuantity),
+                // Note: availableQuantity-ও আপডেট করতে চাইলে লজিক বসাতে পারো, 
+                // তবে সহজ রাখার জন্য আমরা ধরে নিচ্ছি শুধু টোটাল কোয়ান্টিটি বাড়ছে/কমছে।
+            }
+        }
+        const result = await assetsCollection.updateOne(filter, updatedDoc);
         res.send(result);
     });
 
@@ -442,6 +490,37 @@ async function run() {
         const users = await usersCollection.estimatedDocumentCount();
         const assets = await assetsCollection.estimatedDocumentCount();
         res.send({ users, assets });
+    });
+
+    // --- HR Stats API (For Dashboard Charts) ---
+    app.get('/hr-stats', verifyToken, async (req, res) => {
+        const email = req.query.email;
+        
+        // 1. Pie Chart Data: Returnable vs Non-returnable Count
+        const returnableCount = await assetsCollection.countDocuments({ 
+            hrEmail: email, 
+            productType: 'Returnable' 
+        });
+        const nonReturnableCount = await assetsCollection.countDocuments({ 
+            hrEmail: email, 
+            productType: 'Non-returnable' 
+        });
+        
+        // 2. Bar Chart Data: Top 5 Most Requested Items
+        const topRequests = await requestsCollection.aggregate([
+            { $match: { hrEmail: email } }, // Match HR
+            { $group: { _id: "$assetName", count: { $sum: 1 } } }, // Group by Asset Name
+            { $sort: { count: -1 } }, // Sort descending
+            { $limit: 5 } // Take top 5
+        ]).toArray();
+
+        res.send({
+            pieData: [
+                { name: 'Returnable', value: returnableCount },
+                { name: 'Non-returnable', value: nonReturnableCount }
+            ],
+            barData: topRequests 
+        });
     });
 
     // --- YOUR API ROUTES END HERE ---
