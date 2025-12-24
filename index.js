@@ -68,9 +68,9 @@ async function run() {
     const requestsCollection = db.collection("requests");
     const affiliationCollection = db.collection("employeeAffiliations");
 
-    // --- YOUR API ROUTES WILL START HERE ---
+    // ---  API ROUTES WILL START HERE ---
 
-    // 1. Basic Test Route
+    // 1. Basic  Route
     app.get('/', (req, res) => {
         res.send('AssetVerse Server is Running...');
     });
@@ -90,7 +90,7 @@ async function run() {
       .send({ success: true });
     });
 
-    // 2. Logout (Clear Token)
+    // 2. Logout 
     app.post('/logout', (req, res) => {
       res.clearCookie('token', {
         httpOnly: true,
@@ -100,7 +100,7 @@ async function run() {
       .send({ success: true });
     });
 
-    // 3. Create User (Register) - HR & Employee Handling
+    // 3. Create User  - HR & Employee Handling
     app.post('/users', async (req, res) => {
       const user = req.body;
       
@@ -116,23 +116,21 @@ async function run() {
       let finalUser = {
         name: user.name,
         email: user.email,
-        role: user.role, // 'hr' or 'employee'
+        role: user.role,
         dateOfBirth: user.dateOfBirth, 
         profileImage: user.profileImage || "", 
         createdAt: new Date(),
       };
 
-      // HR Specific Logic (Requirements)
+      // HR Specific Logic
       if (user.role === 'hr') {
         finalUser.companyName = user.companyName;
         finalUser.companyLogo = user.companyLogo;
-        finalUser.packageLimit = 5; // Default Package Limit
+        finalUser.packageLimit = 5; 
         finalUser.currentEmployees = 0; 
-        finalUser.subscription = "basic"; // Default Subscription
+        finalUser.subscription = "basic"; 
       } 
       
-      // Employee Specific Logic
-      // Employees are initially unaffiliated, so no extra fields needed yet.
 
       const result = await usersCollection.insertOne(finalUser);
       res.send(result);
@@ -152,39 +150,35 @@ async function run() {
     app.post('/assets', verifyToken, async (req, res) => {
       const asset = req.body;
       
-      // Data preparation for Native MongoDB
+      // Data preparation for MongoDB
       const newAsset = {
         productName: asset.productName,
         productImage: asset.productImage,
-        productType: asset.productType, // "Returnable" or "Non-returnable"
-        productQuantity: parseInt(asset.productQuantity), // Ensure integer
-        availableQuantity: parseInt(asset.productQuantity), // Initially same as total
+        productType: asset.productType, 
+        productQuantity: parseInt(asset.productQuantity), 
+        availableQuantity: parseInt(asset.productQuantity), 
         dateAdded: new Date(),
         hrEmail: asset.hrEmail,
-        companyName: asset.companyName, // HR's company
+        companyName: asset.companyName, 
       };
 
       const result = await assetsCollection.insertOne(newAsset);
       res.send(result);
     });
 
-    // 2. Get Assets (With Search, Filter & Pagination) - COMPLEX PART
+    // 2. Get Assets - COMPLEX PART
     app.get('/assets', verifyToken, async (req, res) => {
       const { email, search, type, limit, page } = req.query;
       
-      // 1. Base Query: হয় HR এর ইমেইল অথবা কোম্পানির নাম দিয়ে ফিল্টার হবে
-      // আমরা ইমেইল দিয়ে ফিল্টার করছি (HR ড্যাশবোর্ডের জন্য)
-      // অথবা যদি এমপ্লয়ি রিকোয়েস্ট করে তবে সব স্টক > 0 দেখানো লাগবে (সেটা পরে আলাদা রুটে হ্যান্ডেল করা যেতে পারে, বা এখানে কন্ডিশন দিয়ে)
       
-      // আপাতত HR এর নিজস্ব অ্যাসেট দেখার লজিক:
       let query = {};
       if (email) {
         query.hrEmail = email; 
       }
 
-      // 2. Search Logic (Regex Search)
+      // 2. Search Logic 
       if (search) {
-        query.productName = { $regex: search, $options: 'i' }; // Case insensitive search
+        query.productName = { $regex: search, $options: 'i' }; 
       }
 
       // 3. Filter by Type
@@ -193,14 +187,13 @@ async function run() {
       }
 
       // 4. Pagination Logic
-      // example: page=1, limit=10 -> skip 0
-      // example: page=2, limit=10 -> skip 10
+     
       const pageNumber = parseInt(page) || 1;
       const pageSize = parseInt(limit) || 10;
       const skip = (pageNumber - 1) * pageSize;
 
       // Fetch Data
-      // cursor তৈরি করে skip এবং limit অ্যাপ্লাই করা হচ্ছে
+     
       const result = await assetsCollection
         .find(query)
         .skip(skip)
@@ -383,7 +376,7 @@ async function run() {
     });
 
 
-    // 4. Get Single Asset (For Update Page)
+    // 4. Get Single Asset 
     app.get('/assets/:id', verifyToken, async (req, res) => {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
