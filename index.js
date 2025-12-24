@@ -200,7 +200,7 @@ async function run() {
         .limit(pageSize)
         .toArray();
 
-      // Total count (for frontend pagination numbers)
+      // Total count 
       const totalAssets = await assetsCollection.countDocuments(query);
 
       res.send({ 
@@ -210,7 +210,7 @@ async function run() {
       });
     });
 
-    // 3. Delete Asset (HR Only)
+    // 3. Delete Asset 
     app.delete('/assets/:id', verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -218,7 +218,7 @@ async function run() {
       res.send(result);
     });
 
-    // 4. Update Asset (Optional but needed for Edit)
+    // 4. Update Asset 
     app.get('/assets/:id', verifyToken, async(req, res) => {
         const id = req.params.id;
         const query = { _id: new ObjectId(id) };
@@ -235,9 +235,7 @@ async function run() {
                 productName: item.productName,
                 productType: item.productType,
                 productQuantity: parseInt(item.productQuantity),
-                // Note: availableQuantity needs careful handling if logic gets complex,
-                // but for simple edit, we might just update quantity.
-                // For now, let's update basic info.
+               
             }
         }
         const result = await assetsCollection.updateOne(filter, updatedDoc);
@@ -252,7 +250,7 @@ async function run() {
       
       // Default fields for a new request
       const newRequest = {
-        ...request, // assetId, assetName, hrEmail, etc. from frontend
+        ...request, // assetId, assetName, hrEmail, 
         requestDate: new Date(),
         requestStatus: 'pending',
         approvalDate: null,
@@ -262,7 +260,7 @@ async function run() {
       res.send(result);
     });
 
-    // 2. Get Requests (HR View - Filter by HR Email)
+    // 2. Get Requests 
     app.get('/requests', verifyToken, async (req, res) => {
       const { email } = req.query; // HR Email
       const query = { hrEmail: email };
@@ -270,18 +268,17 @@ async function run() {
       res.send(result);
     });
 
-    // 3. Get Requests (Employee View - Filter by Employee Email)
+    // 3. Get Requests 
     app.get('/my-requests/:email', verifyToken, async (req, res) => {
       const email = req.params.email;
-      const query = { requesterEmail: email }; // requesterEmail is saved during POST
+      const query = { requesterEmail: email }; 
       
-      // Optional: Search/Filter could be added here similar to Assets
+      //
       const result = await requestsCollection.find(query).toArray();
       res.send(result);
     });
 
-    // 4. HR Handle Request (Approve/Reject) - *** MAIN LOGIC HERE ***
-    // 4. HR Handle Request (Approve/Reject) with LIMIT CHECK
+    
     app.patch('/requests/:id', verifyToken, async (req, res) => {
       const id = req.params.id;
       const { status } = req.body; 
@@ -293,7 +290,7 @@ async function run() {
           return res.status(404).send({ message: "Request not found" });
       }
 
-      // If Rejected: Just update status (No limit check needed)
+      // If Rejected: Just update status 
       if (status === 'rejected') {
           const updateDoc = {
               $set: { requestStatus: 'rejected', approvalDate: new Date() }
@@ -307,20 +304,20 @@ async function run() {
       if (status === 'approved') {
           
           // ==================== NEW LIMIT CHECK LOGIC START ====================
-          // ১. HR এর প্যাকেজ লিমিট বের করো
+        
           const hrUser = await usersCollection.findOne({ email: request.hrEmail });
           const limit = hrUser?.packageLimit || 5;
 
-          // ২. বর্তমানে কতজন এমপ্লয়ি আছে তা গুনো
+          
           const currentEmployees = await affiliationCollection.countDocuments({ hrEmail: request.hrEmail });
 
-          // ৩. চেক করো এই এমপ্লয়ি আগে থেকেই টিমে আছে কিনা
+         
           const existingAffiliation = await affiliationCollection.findOne({
               employeeEmail: request.requesterEmail,
               hrEmail: request.hrEmail
           });
 
-          // ৪. যদি নতুন মেম্বার হয় এবং লিমিট ক্রস করে ফেলে -> আটকাও
+          
           if (!existingAffiliation && currentEmployees >= limit) {
               return res.send({ 
                   limitReached: true, 
@@ -330,20 +327,20 @@ async function run() {
           // ==================== NEW LIMIT CHECK LOGIC END ====================
 
 
-          // Step A: Update Request Status
+          //  Update Request Status
           const updateRequestDoc = {
               $set: { requestStatus: 'approved', approvalDate: new Date() }
           };
           await requestsCollection.updateOne(filter, updateRequestDoc);
 
-          // Step B: Reduce Asset Quantity
+          //  Reduce Asset Quantity
           const assetFilter = { _id: new ObjectId(request.assetId) };
           const updateAssetDoc = {
               $inc: { availableQuantity: -1 } 
           };
           await assetsCollection.updateOne(assetFilter, updateAssetDoc);
 
-          // Step C: Auto-Affiliation (Only if not already affiliated)
+          //  Auto-Affiliation (Only if not already affiliated)
           if (!existingAffiliation) {
               const newAffiliation = {
                   employeeEmail: request.requesterEmail,
@@ -356,7 +353,7 @@ async function run() {
               };
               await affiliationCollection.insertOne(newAffiliation);
               
-              // HR এর user collection এও সংখ্যা বাড়াতে পারো (Optional)
+              
               await usersCollection.updateOne(
                   { email: request.hrEmail }, 
                   { $inc: { currentEmployees: 1 } }
@@ -396,8 +393,7 @@ async function run() {
                 productName: item.productName,
                 productType: item.productType,
                 productQuantity: parseInt(item.productQuantity),
-                // Note: availableQuantity-ও আপডেট করতে চাইলে লজিক বসাতে পারো, 
-                // তবে সহজ রাখার জন্য আমরা ধরে নিচ্ছি শুধু টোটাল কোয়ান্টিটি বাড়ছে/কমছে।
+                
             }
         }
         const result = await assetsCollection.updateOne(filter, updatedDoc);
@@ -408,9 +404,7 @@ async function run() {
 
     // --- Team & Affiliation Management APIs ---
 
-    // 1. Get All Affiliated Employees (For HR view & Employee "My Team" view)
-    // HR can call this with their own email.
-    // Employee calls this with their HR's email to see team members.
+
     app.get('/affiliates/:hrEmail', verifyToken, async (req, res) => {
       const hrEmail = req.params.hrEmail;
       const query = { hrEmail: hrEmail };
@@ -418,8 +412,8 @@ async function run() {
       res.send(result);
     });
 
-    // 2. Check if User is Affiliated (For Employee Dashboard Access Control)
-    // Employee might work for multiple companies, this gets all their affiliations
+    // 2. Check if User is Affiliated
+    
     app.get('/my-affiliations/:email', verifyToken, async(req, res) => {
         const email = req.params.email;
         const query = { employeeEmail: email };
@@ -427,9 +421,8 @@ async function run() {
         res.send(result);
     })
 
-    // 3. Remove Employee from Team (HR Only)
-    // Note: In a real production app, we should also return their assets here.
-    // For now, we are just removing the affiliation link.
+    // 3. Remove Employee from Team 
+    
     app.delete('/affiliates/:id', verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -438,13 +431,13 @@ async function run() {
     });
 
 
-    // --- Payment APIs (Stripe) ---
+    // --- Payment APIs ---
 
-    // 1. Create Payment Intent (Frontend will send price)
+    // 1. Create Payment Intent 
     app.post('/create-payment-intent', verifyToken, async (req, res) => {
       const { price } = req.body;
       
-      // Stripe expects amount in cents (e.g., $10 = 1000 cents)
+      // Stripe expects amount in cents 
       const amount = parseInt(price * 100);
 
       const paymentIntent = await stripe.paymentIntents.create({
@@ -458,14 +451,11 @@ async function run() {
       });
     });
 
-    // 2. Save Payment Info & Update Package Limit (After successful payment)
+    // 2. Save Payment Info & Update Package Limit 
     app.post('/payments', verifyToken, async (req, res) => {
         const payment = req.body;
         const paymentResult = await db.collection("payments").insertOne(payment);
 
-        // Update HR's Package Limit in Users Collection
-        // Frontend sends 'newLimit' (e.g., 5, 10, 20)
-        // We find the HR by email and update their limit
         const filter = { email: payment.hrEmail };
         const updatedDoc = {
             $set: { 
@@ -478,7 +468,7 @@ async function run() {
         res.send({ paymentResult, updateResult });
     });
     
-    // 3. Admin/HR Stats (Optional - for Charts)
+    // 3. Admin/HR Stats 
     app.get('/admin-stats', verifyToken, async(req, res) => {
         // Example: Get simple counts
         const users = await usersCollection.estimatedDocumentCount();
@@ -486,7 +476,7 @@ async function run() {
         res.send({ users, assets });
     });
 
-    // --- HR Stats API (For Dashboard Charts) ---
+    // --- HR Stats API  ---
     app.get('/hr-stats', verifyToken, async (req, res) => {
         const email = req.query.email;
         
@@ -502,10 +492,10 @@ async function run() {
         
         // 2. Bar Chart Data: Top 5 Most Requested Items
         const topRequests = await requestsCollection.aggregate([
-            { $match: { hrEmail: email } }, // Match HR
-            { $group: { _id: "$assetName", count: { $sum: 1 } } }, // Group by Asset Name
-            { $sort: { count: -1 } }, // Sort descending
-            { $limit: 5 } // Take top 5
+            { $match: { hrEmail: email } }, 
+            { $group: { _id: "$assetName", count: { $sum: 1 } } }, 
+            { $sort: { count: -1 } }, 
+            { $limit: 5 } 
         ]).toArray();
 
         res.send({
@@ -524,8 +514,8 @@ async function run() {
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
 
   } finally {
-    // Ensures that the client will close when you finish/error
-    // await client.close(); // সার্ভার রানিং রাখতে এটা বন্ধ রাখা হলো
+    
+    // await client.close(); 
   }
 }
 run().catch(console.dir);
